@@ -56,6 +56,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await setDoc(doc(db, 'users', user.id), user);
 
     // Persist basic credentials in Realtime Database for demo account display
+    try {
+      await setRealtime(ref(realtimeDb, `users/${user.id}`), {
+        email,
+        password,
+        role,
+        name,
+      });
+    } catch (error) {
+      // Failing to write demo credentials should not block account creation.
+      console.warn('Unable to sync credentials to Realtime Database:', error);
+    }
     await setRealtime(ref(realtimeDb, `users/${user.id}`), {
       email,
       password,
