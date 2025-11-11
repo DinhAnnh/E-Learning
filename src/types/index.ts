@@ -21,6 +21,7 @@ export interface Video {
   uploadedBy: string; // user ID
   uploadedAt: Date;
   courseId?: string;
+  teacherId: string;
 }
 
 // Learning progress
@@ -31,6 +32,7 @@ export interface LearningProgress {
   watchTime: number; // in seconds
   completed: boolean;
   lastWatchedAt: Date;
+  teacherId: string;
 }
 
 // Assignment
@@ -42,6 +44,15 @@ export interface Assignment {
   dueDate?: Date;
   createdBy: string; // teacher ID
   createdAt: Date;
+  teacherId: string;
+}
+
+export interface SubmissionAttachment {
+  id: string;
+  name: string;
+  downloadUrl: string;
+  contentType: string;
+  size: number;
 }
 
 // Student submission
@@ -51,11 +62,16 @@ export interface Submission {
   studentId: string;
   content: string;
   audioUrl?: string; // URL to audio recording
+  audioStoragePath?: string;
+  attachments?: SubmissionAttachment[];
   submittedAt: Date;
   score?: number;
   feedback?: string;
   gradedBy?: string; // teacher ID
   gradedAt?: Date;
+  teacherId: string;
+  studentName: string;
+  studentEmail: string;
 }
 
 // Weekly/Monthly stats

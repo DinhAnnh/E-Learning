@@ -1,10 +1,10 @@
 // Firebase configuration and initialization
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getDatabase } from "firebase/database";
+import { initializeApp } from 'firebase/app';
+import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getDatabase } from 'firebase/database';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -22,7 +22,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase services
-export const analytics = getAnalytics(app);
+let analyticsInstance: ReturnType<typeof getAnalytics> | null = null;
+
+if (typeof window !== 'undefined') {
+  void isAnalyticsSupported().then((supported) => {
+    if (supported) {
+      analyticsInstance = getAnalytics(app);
+    }
+  });
+}
+
+export const analytics = analyticsInstance;
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);

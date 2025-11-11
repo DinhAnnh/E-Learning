@@ -4,16 +4,18 @@ import { motion } from 'framer-motion';
 interface VideoPlayerProps {
   videoUrl: string;
   videoId: string;
+  initialWatchTime?: number;
   onProgressUpdate: (watchTime: number) => void;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
-  videoUrl, 
-  videoId, 
-  onProgressUpdate 
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  videoUrl,
+  videoId,
+  initialWatchTime = 0,
+  onProgressUpdate,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [watchTime, setWatchTime] = useState(0);
+  const [watchTime, setWatchTime] = useState(initialWatchTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isTabVisible, setIsTabVisible] = useState(true);
   const intervalRef = useRef<number | null>(null);
@@ -61,12 +63,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying, isTabVisible, onProgressUpdate]);
 
+  useEffect(() => {
+    setWatchTime(initialWatchTime);
+    const videoEl = videoRef.current;
+    if (!videoEl) {
+      return;
+    }
+
+    const applyInitialTime = () => {
+      try {
+        videoEl.currentTime = initialWatchTime;
+      } catch (error) {
+        console.warn('Không thể cập nhật thời gian bắt đầu của video', error);
+      }
+    };
+
+    if (videoEl.readyState >= 1) {
+      applyInitialTime();
+    } else {
+      const onLoadedMetadata = () => {
+        applyInitialTime();
+        videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      };
+      videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+      return () => {
+        videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      };
+    }
+  }, [initialWatchTime, videoId]);
+
   const handlePlay = () => {
     setIsPlaying(true);
   };
 
   const handlePause = () => {
     setIsPlaying(false);
+    onProgressUpdate(watchTime);
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    const duration = videoRef.current?.duration ?? watchTime;
+    onProgressUpdate(Math.ceil(duration));
   };
 
   const formatTime = (seconds: number): string => {
@@ -95,6 +133,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         controls
         onPlay={handlePlay}
         onPause={handlePause}
+        onEnded={handleEnded}
         controlsList="nodownload"
       />
 
