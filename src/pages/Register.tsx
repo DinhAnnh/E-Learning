@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContent';
 import { motion } from 'framer-motion';
 import type { UserRole } from '../types';
 
+
+const ROLE_ROUTES: Record<UserRole, string> = {
+  student: '/student',
+  teacher: '/teacher',
+  admin: '/admin',
+};
 
 export const RegisterPage = () => {
   const [email, setEmail] = useState('');
@@ -13,8 +19,14 @@ export const RegisterPage = () => {
   const [role, setRole] = useState<UserRole>('student');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signup } = useAuth();
+  const { signup, currentUser } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentUser) {
+      navigate(ROLE_ROUTES[currentUser.role], { replace: true });
+    }
+  }, [currentUser, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +50,7 @@ export const RegisterPage = () => {
       setError('');
       setLoading(true);
       await signup(email, password, name, role);
-      navigate('/');
+      navigate(ROLE_ROUTES[role], { replace: true });
     } catch (err: any) {
       console.error('Signup error:', err);
       if (err.code === 'auth/email-already-in-use') {

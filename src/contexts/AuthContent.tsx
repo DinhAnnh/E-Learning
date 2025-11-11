@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { 
+import {
   type User as FirebaseUser,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -7,7 +7,8 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { get as getRealtime, ref, set as setRealtime } from 'firebase/database';
+import { auth, db, realtimeDb } from '../config/firebase';
 import type { User, UserRole } from '../types';
 
 
@@ -42,7 +43,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signup = async (email: string, password: string, name: string, role: UserRole) => {
     // Create Firebase auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    
+
     // Create user document in Firestore
     const user: User = {
       id: userCredential.user.uid,
@@ -53,6 +54,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     };
 
     await setDoc(doc(db, 'users', user.id), user);
+
+    // Persist basic credentials in Realtime Database for demo account display
+    try {
+      await setRealtime(ref(realtimeDb, `users/${user.id}`), {
+        email,
+        password,
+        role,
+        name,
+      });
+    } catch (error) {
+      // Failing to write demo credentials should not block account creation.
+      console.warn('Unable to sync credentials to Realtime Database:', error);
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -74,10 +88,35 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           const userData = userDoc.data() as User;
           setCurrentUser({
             ...userData,
-            createdAt: userData.createdAt instanceof Date 
-              ? userData.createdAt 
+            createdAt: userData.createdAt instanceof Date
+              ? userData.createdAt
               : (userData.createdAt as any).toDate()
           });
+        } else {
+          // Attempt to recover user profile from Realtime Database demo credentials
+          const realtimeSnapshot = await getRealtime(ref(realtimeDb, `users/${firebaseUser.uid}`));
+
+          if (realtimeSnapshot.exists()) {
+            const realtimeData = realtimeSnapshot.val() as Partial<User> & { password?: string };
+            const role = realtimeData.role;
+
+            if (role === 'student' || role === 'teacher' || role === 'admin') {
+              const recoveredUser: User = {
+                id: firebaseUser.uid,
+                email: realtimeData.email ?? firebaseUser.email ?? '',
+                name: realtimeData.name ?? firebaseUser.displayName ?? '',
+                role,
+                createdAt: new Date(),
+              };
+
+              setCurrentUser(recoveredUser);
+              await setDoc(doc(db, 'users', firebaseUser.uid), recoveredUser);
+            } else {
+              setCurrentUser(null);
+            }
+          } else {
+            setCurrentUser(null);
+          }
         }
       } else {
         setCurrentUser(null);
