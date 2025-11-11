@@ -19,12 +19,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
 };
 
-const ROLE_ROUTES: Record<UserRole, string> = {
-  student: '/student',
-  teacher: '/teacher',
-  admin: '/admin',
-};
-
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,14 +26,8 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
   const [loadingDemoAccounts, setLoadingDemoAccounts] = useState(true);
-  const { login, currentUser } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (currentUser) {
-      navigate(ROLE_ROUTES[currentUser.role], { replace: true });
-    }
-  }, [currentUser, navigate]);
 
   useEffect(() => {
     let isSubscribed = true;
