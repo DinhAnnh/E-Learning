@@ -114,8 +114,6 @@ export const LoginPage = () => {
       setError('');
       setLoading(true);
       await login(email, password);
-      // Redirect will be handled by PrivateRoute based on user role
-      navigate('/');
     } catch (err: any) {
       console.error('Login error:', err);
       if (err.code === 'auth/user-not-found') {
