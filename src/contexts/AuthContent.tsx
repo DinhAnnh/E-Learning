@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import {
   type User as FirebaseUser,
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged
@@ -41,6 +42,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [loading, setLoading] = useState(true);
 
   const signup = async (email: string, password: string, name: string, role: UserRole) => {
+    const existingMethods = await fetchSignInMethodsForEmail(auth, email);
+
+    if (existingMethods.length > 0) {
+      throw Object.assign(new Error('Email already in use'), { code: 'auth/email-already-in-use' });
+    }
+
     // Create Firebase auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
