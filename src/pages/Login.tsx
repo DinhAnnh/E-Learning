@@ -1,15 +1,118 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContent';
 import { motion } from 'framer-motion';
+import { get, ref } from 'firebase/database';
+import { realtimeDb } from '../config/firebase';
+import type { UserRole } from '../types';
+
+interface DemoAccount {
+  email: string;
+  password: string;
+  role: UserRole;
+  name?: string;
+}
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  student: 'Học sinh',
+  teacher: 'Giáo viên',
+  admin: 'Admin',
+};
+
+const ROLE_ROUTES: Record<UserRole, string> = {
+  student: '/student',
+  teacher: '/teacher',
+  admin: '/admin',
+};
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
+  const [loadingDemoAccounts, setLoadingDemoAccounts] = useState(true);
+  const { login, currentUser } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentUser) {
+      navigate(ROLE_ROUTES[currentUser.role], { replace: true });
+    }
+  }, [currentUser, navigate]);
+
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const fetchDemoAccounts = async () => {
+      try {
+        setLoadingDemoAccounts(true);
+        const snapshot = await get(ref(realtimeDb, 'users'));
+
+        if (!isSubscribed) {
+          return;
+        }
+
+        if (snapshot.exists()) {
+          const rawData = snapshot.val();
+          const accountsArray = Array.isArray(rawData)
+            ? rawData
+            : Object.values(rawData ?? {});
+
+          const formattedAccounts: DemoAccount[] = accountsArray
+            .map((item) => {
+              if (!item || typeof item !== 'object') {
+                return null;
+              }
+
+              const role = (item as Record<string, unknown>).role;
+              const email = (item as Record<string, unknown>).email;
+              const password = (item as Record<string, unknown>).password;
+              const name = (item as Record<string, unknown>).name;
+
+              if (
+                role !== 'student' &&
+                role !== 'teacher' &&
+                role !== 'admin'
+              ) {
+                return null;
+              }
+
+              if (typeof email !== 'string' || typeof password !== 'string') {
+                return null;
+              }
+
+              return {
+                role,
+                email,
+                password,
+                name: typeof name === 'string' && name.trim().length > 0 ? name : undefined,
+              } satisfies DemoAccount;
+            })
+            .filter((account): account is DemoAccount => account !== null);
+
+          setDemoAccounts(formattedAccounts);
+        } else {
+          setDemoAccounts([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch demo accounts:', err);
+        if (isSubscribed) {
+          setDemoAccounts([]);
+        }
+      } finally {
+        if (isSubscribed) {
+          setLoadingDemoAccounts(false);
+        }
+      }
+    };
+
+    void fetchDemoAccounts();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +126,6 @@ export const LoginPage = () => {
       setError('');
       setLoading(true);
       await login(email, password);
-      // Redirect will be handled by PrivateRoute based on user role
-      navigate('/');
     } catch (err: any) {
       console.error('Login error:', err);
       if (err.code === 'auth/user-not-found') {
@@ -126,9 +227,27 @@ export const LoginPage = () => {
         <div className="mt-6 bg-white/60 backdrop-blur-sm rounded-xl p-6">
           <p className="text-sm font-semibold text-gray-700 mb-3">Tài khoản demo:</p>
           <div className="space-y-2 text-sm text-gray-600">
-            <p>• Học sinh: student@demo.com / password123</p>
-            <p>• Giáo viên: teacher@demo.com / password123</p>
-            <p>• Admin: admin@demo.com / password123</p>
+            {loadingDemoAccounts ? (
+              <p>Đang tải danh sách tài khoản...</p>
+            ) : demoAccounts.length > 0 ? (
+              demoAccounts.map((account) => (
+                <div key={`${account.role}-${account.email}`} className="space-y-1">
+                  <p>
+                    • {ROLE_LABELS[account.role]}: {account.email} / {account.password}
+                  </p>
+                  {account.name && (
+                    <p className="text-xs text-gray-500 ml-4">Tên hiển thị: {account.name}</p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <>
+                <p>• Học sinh: student@demo.com / password123</p>
+                <p>• Giáo viên: teacher@demo.com / password123</p>
+                <p>• Admin: admin@demo.com / password123</p>
+                <p className="text-xs text-gray-500">Không thể tải dữ liệu demo từ Firebase. Hiển thị thông tin mặc định.</p>
+              </>
+            )}
           </div>
         </div>
       </motion.div>
