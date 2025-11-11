@@ -1,23 +1,43 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
+import type { SubmissionAttachment } from '../types';
+
+export interface AssignmentSubmissionPayload {
+  content: string;
+  files: File[];
+  audioBlob?: Blob;
+  audioFileName?: string;
+}
 
 interface AssignmentProps {
   assignmentId: string;
   title: string;
   description: string;
-  onSubmit: (content: string, audioBlob?: Blob) => void;
+  onSubmit: (payload: AssignmentSubmissionPayload) => void;
+  isSubmitting?: boolean;
+  existingSubmission?: {
+    submittedAt: Date;
+    score?: number;
+    feedback?: string;
+    attachments?: SubmissionAttachment[];
+    audioUrl?: string;
+  } | null;
 }
 
 export const Assignment: React.FC<AssignmentProps> = ({
   assignmentId,
   title,
   description,
-  onSubmit
+  onSubmit,
+  isSubmitting = false,
+  existingSubmission,
 }) => {
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioFileName, setAudioFileName] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -36,11 +56,13 @@ export const Assignment: React.FC<AssignmentProps> = ({
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const fileName = `recording-${new Date().toISOString()}.webm`;
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
-        
+        setAudioFileName(fileName);
+
         // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
@@ -64,17 +86,47 @@ export const Assignment: React.FC<AssignmentProps> = ({
     }
     setAudioBlob(null);
     setAudioUrl(null);
+    setAudioFileName(null);
+  };
+
+  const handleFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    setSelectedFiles((prev) => {
+      const existingNames = new Set(prev.map((file) => file.name));
+      const merged = [...prev];
+      files.forEach((file) => {
+        if (!existingNames.has(file.name)) {
+          merged.push(file);
+        }
+      });
+      return merged;
+    });
+    event.target.value = '';
+  };
+
+  const removeFile = (fileName: string) => {
+    setSelectedFiles((prev) => prev.filter((file) => file.name !== fileName));
   };
 
   const handleSubmit = () => {
-    if (!content.trim() && !audioBlob) {
-      alert('Vui lòng nhập nội dung hoặc ghi âm trả lời');
+    if (!content.trim() && !audioBlob && selectedFiles.length === 0) {
+      alert('Vui lòng nhập nội dung, tải tệp hoặc ghi âm trả lời');
       return;
     }
-    onSubmit(content, audioBlob || undefined);
+
+    onSubmit({
+      content,
+      files: selectedFiles,
+      audioBlob: audioBlob || undefined,
+      audioFileName: audioFileName ?? undefined,
+    });
+
     // Reset form
     setContent('');
     deleteRecording();
+    setSelectedFiles([]);
   };
 
   return (
@@ -110,12 +162,62 @@ export const Assignment: React.FC<AssignmentProps> = ({
         />
       </div>
 
+      {/* File upload */}
+      <div className="mb-6">
+        <label className="block text-sm font-semibold text-gray-700 mb-3">
+          Tệp đính kèm (tùy chọn)
+        </label>
+        <div className="flex flex-col gap-4">
+          <label
+            htmlFor={`assignment-${assignmentId}-files`}
+            className="inline-flex items-center gap-2 px-5 py-3 bg-white border-2 border-dashed border-blue-200 rounded-xl text-blue-600 font-semibold cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828M8 17l9-9" />
+            </svg>
+            Chọn tệp tải lên
+            <input
+              id={`assignment-${assignmentId}-files`}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFilesSelected}
+            />
+          </label>
+
+          {selectedFiles.length > 0 && (
+            <div className="space-y-2">
+              {selectedFiles.map((file) => (
+                <div
+                  key={`${file.name}-${file.lastModified}`}
+                  className="flex items-center justify-between px-4 py-2 bg-blue-50 rounded-lg"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700">{file.name}</p>
+                    <p className="text-xs text-blue-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                  </div>
+                  <button
+                    onClick={() => removeFile(file.name)}
+                    className="p-2 rounded-full hover:bg-blue-100 text-blue-600"
+                    title="Xóa tệp"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Audio recording */}
       <div className="mb-6">
         <label className="block text-sm font-semibold text-gray-700 mb-3">
           Ghi âm trả lời (tùy chọn)
         </label>
-        
+
         <div className="flex items-center gap-3 flex-wrap">
           {!isRecording && !audioBlob && (
             <button
@@ -156,13 +258,54 @@ export const Assignment: React.FC<AssignmentProps> = ({
         </div>
       </div>
 
+      {existingSubmission && (
+        <div className="mt-8 rounded-2xl border border-green-200 bg-green-50 p-6">
+          <h4 className="text-lg font-semibold text-green-800 mb-3">Bài nộp gần nhất</h4>
+          <p className="text-sm text-green-700 mb-2">
+            Đã nộp lúc: {existingSubmission.submittedAt.toLocaleString('vi-VN')}
+          </p>
+          {existingSubmission.score !== undefined && (
+            <p className="text-sm text-green-700 mb-2">Điểm: {existingSubmission.score.toFixed(1)}</p>
+          )}
+          {existingSubmission.feedback && (
+            <p className="text-sm text-green-700 mb-3">Nhận xét: {existingSubmission.feedback}</p>
+          )}
+          {existingSubmission.attachments && existingSubmission.attachments.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-green-800">Tệp đã nộp:</p>
+              {existingSubmission.attachments.map((attachment) => (
+                <a
+                  key={attachment.id}
+                  href={attachment.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-green-700 hover:text-green-900"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  {attachment.name}
+                </a>
+              ))}
+            </div>
+          )}
+          {existingSubmission.audioUrl && (
+            <div className="mt-3">
+              <p className="text-sm font-semibold text-green-800 mb-2">Ghi âm đã nộp:</p>
+              <audio src={existingSubmission.audioUrl} controls className="w-full" />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Submit button */}
       <div className="flex justify-end">
         <button
           onClick={handleSubmit}
-          className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-full font-bold shadow-xl transition-all duration-300 hover:scale-105"
+          disabled={isSubmitting}
+          className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-full font-bold shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Nộp bài
+          {isSubmitting ? 'Đang nộp...' : 'Nộp bài'}
         </button>
       </div>
     </motion.div>
