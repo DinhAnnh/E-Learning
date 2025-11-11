@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContent';
 import { motion } from 'framer-motion';
 import { get, ref } from 'firebase/database';
+import type { FirebaseError } from 'firebase/app';
 import { realtimeDb } from '../config/firebase';
 import type { UserRole } from '../types';
 
@@ -25,25 +26,107 @@ const ROLE_ROUTES: Record<UserRole, string> = {
   admin: '/admin',
 };
 
+const DEMO_ACCOUNT_FALLBACKS: DemoAccount[] = [
+  { role: 'student', email: 'student@demo.com', password: 'password123' },
+  { role: 'teacher', email: 'teacher@demo.com', password: 'password123' },
+  { role: 'admin', email: 'admin@demo.com', password: 'password123' },
+];
+
+const mapToDemoAccount = (item: unknown): DemoAccount | null => {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const record = item as Record<string, unknown>;
+  const role = record.role;
+  const email = record.email;
+  const password = record.password;
+  const name = record.name;
+
+  if (role !== 'student' && role !== 'teacher' && role !== 'admin') {
+    return null;
+  }
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return null;
+  }
+
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+  return {
+    role,
+    email,
+    password,
+    name: trimmedName.length > 0 ? trimmedName : undefined,
+  } satisfies DemoAccount;
+};
+
+const useDemoAccounts = () => {
+  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
+  const [loadingDemoAccounts, setLoadingDemoAccounts] = useState(true);
+
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const fetchDemoAccounts = async () => {
+      try {
+        setLoadingDemoAccounts(true);
+        const snapshot = await get(ref(realtimeDb, 'users'));
+
+        if (!isSubscribed) {
+          return;
+        }
+
+        if (snapshot.exists()) {
+          const rawData = snapshot.val();
+          const accountsArray = Array.isArray(rawData)
+            ? rawData
+            : Object.values(rawData ?? {});
+
+          const formattedAccounts = accountsArray
+            .map(mapToDemoAccount)
+            .filter((account): account is DemoAccount => account !== null);
+
+          setDemoAccounts(formattedAccounts);
+        } else {
+          setDemoAccounts([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch demo accounts:', err);
+        if (isSubscribed) {
+          setDemoAccounts([]);
+        }
+      } finally {
+        if (isSubscribed) {
+          setLoadingDemoAccounts(false);
+        }
+      }
+    };
+
+    void fetchDemoAccounts();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
+
+  return { demoAccounts, loadingDemoAccounts };
+};
+
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
-  const [loadingDemoAccounts, setLoadingDemoAccounts] = useState(true);
   const { login, currentUser } = useAuth();
   const navigate = useNavigate();
+  const { demoAccounts, loadingDemoAccounts } = useDemoAccounts();
 
   useEffect(() => {
     if (currentUser) {
       navigate(ROLE_ROUTES[currentUser.role], { replace: true });
     }
   }, [currentUser, navigate]);
-
-  useEffect(() => {
-  const { login } = useAuth();
-  const navigate = useNavigate();
 
   useEffect(() => {
     let isSubscribed = true;
@@ -120,7 +203,7 @@ export const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       setError('Vui lòng điền đầy đủ thông tin');
       return;
@@ -130,13 +213,14 @@ export const LoginPage = () => {
       setError('');
       setLoading(true);
       await login(email, password);
-    } catch (err: any) {
+    } catch (err) {
+      const error = err as Partial<FirebaseError> & { code?: string };
       console.error('Login error:', err);
-      if (err.code === 'auth/user-not-found') {
+      if (error.code === 'auth/user-not-found') {
         setError('Tài khoản không tồn tại');
-      } else if (err.code === 'auth/wrong-password') {
+      } else if (error.code === 'auth/wrong-password') {
         setError('Mật khẩu không đúng');
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (error.code === 'auth/invalid-email') {
         setError('Email không hợp lệ');
       } else {
         setError('Đăng nhập thất bại. Vui lòng thử lại.');
@@ -246,9 +330,11 @@ export const LoginPage = () => {
               ))
             ) : (
               <>
-                <p>• Học sinh: student@demo.com / password123</p>
-                <p>• Giáo viên: teacher@demo.com / password123</p>
-                <p>• Admin: admin@demo.com / password123</p>
+                {DEMO_ACCOUNT_FALLBACKS.map((account) => (
+                  <p key={account.role}>
+                    • {ROLE_LABELS[account.role]}: {account.email} / {account.password}
+                  </p>
+                ))}
                 <p className="text-xs text-gray-500">Không thể tải dữ liệu demo từ Firebase. Hiển thị thông tin mặc định.</p>
               </>
             )}
