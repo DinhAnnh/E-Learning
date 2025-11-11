@@ -42,6 +42,10 @@ export const LoginPage = () => {
   }, [currentUser, navigate]);
 
   useEffect(() => {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
     let isSubscribed = true;
 
     const fetchDemoAccounts = async () => {

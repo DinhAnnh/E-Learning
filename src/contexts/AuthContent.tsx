@@ -67,6 +67,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Failing to write demo credentials should not block account creation.
       console.warn('Unable to sync credentials to Realtime Database:', error);
     }
+    await setRealtime(ref(realtimeDb, `users/${user.id}`), {
+      email,
+      password,
+      role,
+      name,
+    });
   };
 
   const login = async (email: string, password: string) => {
