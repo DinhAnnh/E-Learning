@@ -128,6 +128,79 @@ export const LoginPage = () => {
     }
   }, [currentUser, navigate]);
 
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const fetchDemoAccounts = async () => {
+      try {
+        setLoadingDemoAccounts(true);
+        const snapshot = await get(ref(realtimeDb, 'users'));
+
+        if (!isSubscribed) {
+          return;
+        }
+
+        if (snapshot.exists()) {
+          const rawData = snapshot.val();
+          const accountsArray = Array.isArray(rawData)
+            ? rawData
+            : Object.values(rawData ?? {});
+
+          const formattedAccounts: DemoAccount[] = accountsArray
+            .map((item) => {
+              if (!item || typeof item !== 'object') {
+                return null;
+              }
+
+              const role = (item as Record<string, unknown>).role;
+              const email = (item as Record<string, unknown>).email;
+              const password = (item as Record<string, unknown>).password;
+              const name = (item as Record<string, unknown>).name;
+
+              if (
+                role !== 'student' &&
+                role !== 'teacher' &&
+                role !== 'admin'
+              ) {
+                return null;
+              }
+
+              if (typeof email !== 'string' || typeof password !== 'string') {
+                return null;
+              }
+
+              return {
+                role,
+                email,
+                password,
+                name: typeof name === 'string' && name.trim().length > 0 ? name : undefined,
+              } satisfies DemoAccount;
+            })
+            .filter((account): account is DemoAccount => account !== null);
+
+          setDemoAccounts(formattedAccounts);
+        } else {
+          setDemoAccounts([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch demo accounts:', err);
+        if (isSubscribed) {
+          setDemoAccounts([]);
+        }
+      } finally {
+        if (isSubscribed) {
+          setLoadingDemoAccounts(false);
+        }
+      }
+    };
+
+    void fetchDemoAccounts();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
