@@ -76,7 +76,96 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+  const fetchRealtimeUserByEmail = async (email: string) => {
+    const response = await fetch(
+      'https://academy-98fb0-default-rtdb.asia-southeast1.firebasedatabase.app/users.json'
+    );
+
+    if (!response.ok) {
+      throw Object.assign(new Error('Unable to fetch realtime users'), {
+        code: 'auth/network-request-failed',
+      });
+    }
+
+    const rawData: unknown = await response.json();
+    const candidates = Array.isArray(rawData) ? rawData : Object.values(rawData ?? {});
+    const normalizedEmail = normalizeEmail(email);
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') {
+        continue;
+      }
+
+      const record = candidate as Partial<User> & { password?: string };
+      if (typeof record.email !== 'string' || typeof record.password !== 'string') {
+        continue;
+      }
+
+      if (normalizeEmail(record.email) === normalizedEmail) {
+        return record;
+      }
+    }
+
+    return null;
+  };
+
   const login = async (email: string, password: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return;
+    } catch (error) {
+      const authError = error as { code?: string };
+
+      if (authError.code !== 'auth/user-not-found') {
+        throw error;
+      }
+    }
+
+    const realtimeUser = await fetchRealtimeUserByEmail(email);
+
+    if (!realtimeUser) {
+      throw Object.assign(new Error('User not found'), { code: 'auth/user-not-found' });
+    }
+
+    if (realtimeUser.password !== password) {
+      throw Object.assign(new Error('Incorrect password'), { code: 'auth/wrong-password' });
+    }
+
+    const signInMethods = await fetchSignInMethodsForEmail(auth, email);
+
+    if (signInMethods.length === 0) {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const role = realtimeUser.role;
+
+      const resolvedRole: UserRole =
+        role === 'student' || role === 'teacher' || role === 'admin' ? role : 'student';
+
+      const user: User = {
+        id: userCredential.user.uid,
+        email,
+        name: typeof realtimeUser.name === 'string' ? realtimeUser.name : '',
+        role: resolvedRole,
+        createdAt: new Date(),
+      };
+
+      await setDoc(doc(db, 'users', user.id), user);
+
+      try {
+        await setRealtime(ref(realtimeDb, `users/${user.id}`), {
+          email: user.email,
+          password,
+          role: user.role,
+          name: user.name,
+        });
+      } catch (syncError) {
+        console.warn('Unable to sync realtime credentials for migrated user:', syncError);
+      }
+
+      return;
+    }
+
     await signInWithEmailAndPassword(auth, email, password);
   };
 
