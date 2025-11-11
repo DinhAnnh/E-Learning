@@ -64,6 +64,7 @@ const mapToDemoAccount = (item: unknown): DemoAccount | null => {
 const useDemoAccounts = () => {
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
   const [loadingDemoAccounts, setLoadingDemoAccounts] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -88,13 +89,16 @@ const useDemoAccounts = () => {
             .filter((account): account is DemoAccount => account !== null);
 
           setDemoAccounts(formattedAccounts);
+          setHasError(false);
         } else {
           setDemoAccounts([]);
+          setHasError(false);
         }
       } catch (err) {
         console.error('Failed to fetch demo accounts:', err);
         if (isSubscribed) {
           setDemoAccounts([]);
+          setHasError(true);
         }
       } finally {
         if (isSubscribed) {
@@ -110,7 +114,7 @@ const useDemoAccounts = () => {
     };
   }, []);
 
-  return { demoAccounts, loadingDemoAccounts };
+  return { demoAccounts, loadingDemoAccounts, hasError };
 };
 
 export const LoginPage = () => {
@@ -120,86 +124,13 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const { login, currentUser } = useAuth();
   const navigate = useNavigate();
-  const { demoAccounts, loadingDemoAccounts } = useDemoAccounts();
+  const { demoAccounts, loadingDemoAccounts, hasError } = useDemoAccounts();
 
   useEffect(() => {
     if (currentUser) {
       navigate(ROLE_ROUTES[currentUser.role], { replace: true });
     }
   }, [currentUser, navigate]);
-
-  useEffect(() => {
-    let isSubscribed = true;
-
-    const fetchDemoAccounts = async () => {
-      try {
-        setLoadingDemoAccounts(true);
-        const snapshot = await get(ref(realtimeDb, 'users'));
-
-        if (!isSubscribed) {
-          return;
-        }
-
-        if (snapshot.exists()) {
-          const rawData = snapshot.val();
-          const accountsArray = Array.isArray(rawData)
-            ? rawData
-            : Object.values(rawData ?? {});
-
-          const formattedAccounts: DemoAccount[] = accountsArray
-            .map((item) => {
-              if (!item || typeof item !== 'object') {
-                return null;
-              }
-
-              const role = (item as Record<string, unknown>).role;
-              const email = (item as Record<string, unknown>).email;
-              const password = (item as Record<string, unknown>).password;
-              const name = (item as Record<string, unknown>).name;
-
-              if (
-                role !== 'student' &&
-                role !== 'teacher' &&
-                role !== 'admin'
-              ) {
-                return null;
-              }
-
-              if (typeof email !== 'string' || typeof password !== 'string') {
-                return null;
-              }
-
-              return {
-                role,
-                email,
-                password,
-                name: typeof name === 'string' && name.trim().length > 0 ? name : undefined,
-              } satisfies DemoAccount;
-            })
-            .filter((account): account is DemoAccount => account !== null);
-
-          setDemoAccounts(formattedAccounts);
-        } else {
-          setDemoAccounts([]);
-        }
-      } catch (err) {
-        console.error('Failed to fetch demo accounts:', err);
-        if (isSubscribed) {
-          setDemoAccounts([]);
-        }
-      } finally {
-        if (isSubscribed) {
-          setLoadingDemoAccounts(false);
-        }
-      }
-    };
-
-    void fetchDemoAccounts();
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,7 +266,11 @@ export const LoginPage = () => {
                     • {ROLE_LABELS[account.role]}: {account.email} / {account.password}
                   </p>
                 ))}
-                <p className="text-xs text-gray-500">Không thể tải dữ liệu demo từ Firebase. Hiển thị thông tin mặc định.</p>
+                <p className="text-xs text-gray-500">
+                  {hasError
+                    ? 'Không thể tải dữ liệu demo từ Firebase. Hiển thị thông tin mặc định.'
+                    : 'Hiển thị thông tin mặc định khi chưa có dữ liệu demo.'}
+                </p>
               </>
             )}
           </div>
